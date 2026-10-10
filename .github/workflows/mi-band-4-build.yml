@@ -60,6 +60,11 @@ jobs:
           west build -p always -b mi_band_4 app/samples/mi_band_4_display_test -- \
             -DBOARD_ROOT="$GITHUB_WORKSPACE/app" \
             -DEXTRA_ZEPHYR_MODULES="$GITHUB_WORKSPACE/app"
+          echo "---- Flash/XIP configuration ----"
+          grep -E "^(CONFIG_XIP|CONFIG_USE_DT_CODE_PARTITION|CONFIG_FLASH_SIZE|CONFIG_FLASH_LOAD_OFFSET|CONFIG_FLASH_LOAD_SIZE)=" build/zephyr/.config || true
+          echo "---- Linker memory report ----"
+          west build -t rom_report -d build
+          grep -E "^(CONFIG_XIP|CONFIG_USE_DT_CODE_PARTITION|CONFIG_FLASH_SIZE|CONFIG_FLASH_LOAD_OFFSET|CONFIG_FLASH_LOAD_SIZE)=" build/zephyr/.config || true
 
       - name: Upload build outputs and logs
         if: always()
