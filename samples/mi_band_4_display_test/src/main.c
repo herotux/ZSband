@@ -106,15 +106,21 @@ BT_GATT_SERVICE_DEFINE(clock_sync_service,
 
 static int start_clock_ble(void)
 {
+    static const uint8_t ad_flags[] = {
+        BT_LE_AD_GENERAL | BT_LE_AD_NO_BREDR,
+    };
+    static const uint8_t service_uuid_bytes[] = {
+        BT_UUID_128_ENCODE(0x8d2f7b10, 0x6d3a, 0x4b19,
+                           0x9e2a, 0x73c4d5a6b701),
+    };
+    static const uint8_t device_name[] = CONFIG_BT_DEVICE_NAME;
     static const struct bt_data ad[] = {
-        BT_DATA_BYTES(BT_DATA_FLAGS, (BT_LE_AD_GENERAL | BT_LE_AD_NO_BREDR)),
-        BT_DATA_BYTES(BT_DATA_UUID128_ALL,
-            BT_UUID_128_ENCODE(0x8d2f7b10, 0x6d3a, 0x4b19,
-                               0x9e2a, 0x73c4d5a6b701)),
+        BT_DATA(BT_DATA_FLAGS, ad_flags, sizeof(ad_flags)),
+        BT_DATA(BT_DATA_UUID128_ALL, service_uuid_bytes,
+                sizeof(service_uuid_bytes)),
     };
     static const struct bt_data sd[] = {
-        BT_DATA(BT_DATA_NAME_COMPLETE, CONFIG_BT_DEVICE_NAME,
-                sizeof(CONFIG_BT_DEVICE_NAME) - 1),
+        BT_DATA(BT_DATA_NAME_COMPLETE, device_name, sizeof(device_name) - 1),
     };
     int err = bt_enable(NULL);
 
