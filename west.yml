@@ -15,6 +15,7 @@ manifest:
         name-allowlist:
           - picolibc
           - mbedtls
+          - tf-psa-crypto
           - mcuboot
           - net-tools
           - segger
