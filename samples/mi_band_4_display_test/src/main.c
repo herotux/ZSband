@@ -279,16 +279,19 @@ static int render_clock(const struct device *display, int64_t epoch)
 
     fill_rect(8, 16, 104, 2, COLOR_RULE);
     fill_rect(8, 17, 4, 20, COLOR_ACCENT);
-    draw_text("1405", 28, 1, COLOR_MUTED);
     draw_text(time_text, 78, 2, COLOR_TEXT);
     fill_rect(24, 111, 72, 1, COLOR_RULE);
     draw_text(date_text, 132, 1, COLOR_ACCENT);
 
-    /* Month/day-independent progress accent; date is explicitly Jalali. */
-    fill_rect(18, 171, 84, 8, COLOR_PANEL);
-    fill_rect(18, 171, (jm * 84) / 12, 8, COLOR_ACCENT);
-    draw_text("07", 196, 1, COLOR_MUTED);
-    draw_text("18", 196, 1, COLOR_MUTED);
+    /* A subtle year-progress indicator derived from the Jalali day number. */
+    {
+        int day_of_year = jd;
+        for (int m = 1; m < jm; m++) {
+            day_of_year += (m <= 6) ? 31 : (m <= 11 ? 30 : 29);
+        }
+        fill_rect(18, 181, 84, 5, COLOR_PANEL);
+        fill_rect(18, 181, (day_of_year * 84) / 366, 5, COLOR_ACCENT);
+    }
     fill_rect(8, 222, 104, 2, COLOR_RULE);
 
     int ret = display_write(display, 0, 0, &desc, framebuffer);
