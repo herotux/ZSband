@@ -86,10 +86,10 @@ static int rm69xxx_write(const struct device *dev, const uint16_t x, const uint1
 	}
 
 	/* The panel coordinates plus offsets must fit in its 16-bit address range. */
-	if ((int32_t)x + cfg->x_offset < 0 ||
-	    (int32_t)x + cfg->x_offset + desc->width - 1U > UINT16_MAX ||
-	    (int32_t)y + cfg->y_offset < 0 ||
-	    (int32_t)y + cfg->y_offset + desc->height - 1U > UINT16_MAX) {
+	if ((int32_t)x + (int32_t)cfg->x_offset < 0 ||
+	    (int32_t)x + (int32_t)cfg->x_offset + (int32_t)desc->width - 1 > UINT16_MAX ||
+	    (int32_t)y + (int32_t)cfg->y_offset < 0 ||
+	    (int32_t)y + (int32_t)cfg->y_offset + (int32_t)desc->height - 1 > UINT16_MAX) {
 		LOG_ERR("Display write exceeds controller address range");
 		return -EINVAL;
 	}
