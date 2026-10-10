@@ -14,6 +14,9 @@
 #include <stddef.h>
 #include <stdbool.h>
 #include <zephyr/device.h>
+#include <zephyr/bluetooth/bluetooth.h>
+#include <zephyr/bluetooth/gatt.h>
+#include <zephyr/sys/byteorder.h>
 #include <zephyr/devicetree.h>
 #include <zephyr/drivers/display.h>
 #include <zephyr/kernel.h>
@@ -36,6 +39,114 @@ LOG_MODULE_REGISTER(mi_band_4_jalali_clock, LOG_LEVEL_INF);
 #define COLOR_RULE     RGB565(38, 57, 80)
 
 static uint16_t framebuffer[DISPLAY_WIDTH * DISPLAY_HEIGHT];
+
+/*
+ * BLE time sync protocol:
+ * Write exactly 10 bytes to the characteristic:
+ *   bytes 0..7: Unix epoch seconds in UTC, unsigned little-endian
+ *   bytes 8..9: phone UTC offset in minutes, signed little-endian
+ * A companion phone app should write this on connect and periodically.
+ */
+static struct k_mutex clock_mutex;
+static int64_t synced_local_epoch;
+static int64_t sync_uptime_seconds;
+static bool clock_is_synced;
+
+static struct bt_uuid_128 clock_service_uuid =
+    BT_UUID_INIT_128(BT_UUID_128_ENCODE(0x8d2f7b10, 0x6d3a, 0x4b19,
+                                        0x9e2a, 0x73c4d5a6b701));
+static struct bt_uuid_128 clock_time_uuid =
+    BT_UUID_INIT_128(BT_UUID_128_ENCODE(0x8d2f7b11, 0x6d3a, 0x4b19,
+                                        0x9e2a, 0x73c4d5a6b701));
+
+static ssize_t write_clock_time(struct bt_conn *conn,
+                                const struct bt_gatt_attr *attr,
+                                const void *buf, uint16_t len,
+                                uint16_t offset, uint8_t flags)
+{
+    const uint8_t *data = buf;
+    uint64_t utc_epoch;
+    int16_t utc_offset_minutes;
+
+    ARG_UNUSED(conn);
+    ARG_UNUSED(attr);
+    ARG_UNUSED(flags);
+
+    if (offset != 0U || len != 10U) {
+        return BT_GATT_ERR(BT_ATT_ERR_INVALID_ATTRIBUTE_LEN);
+    }
+
+    utc_epoch = sys_get_le64(data);
+    utc_offset_minutes = (int16_t)sys_get_le16(data + 8);
+
+    /* Reject obviously invalid timestamps instead of displaying nonsense. */
+    if (utc_epoch < 1577836800ULL || utc_epoch > 4102444800ULL ||
+        utc_offset_minutes < -720 || utc_offset_minutes > 840) {
+        return BT_GATT_ERR(BT_ATT_ERR_VALUE_NOT_ALLOWED);
+    }
+
+    k_mutex_lock(&clock_mutex, K_FOREVER);
+    synced_local_epoch = (int64_t)utc_epoch +
+                         (int64_t)utc_offset_minutes * 60;
+    sync_uptime_seconds = k_uptime_get() / 1000;
+    clock_is_synced = true;
+    k_mutex_unlock(&clock_mutex);
+
+    LOG_INF("Time synchronized over BLE (UTC offset %d min)",
+            utc_offset_minutes);
+    return len;
+}
+
+BT_GATT_SERVICE_DEFINE(clock_sync_service,
+    BT_GATT_PRIMARY_SERVICE(&clock_service_uuid.uuid),
+    BT_GATT_CHARACTERISTIC(&clock_time_uuid.uuid,
+        BT_GATT_CHRC_WRITE | BT_GATT_CHRC_WRITE_WITHOUT_RESP,
+        BT_GATT_PERM_WRITE, NULL, write_clock_time, NULL)
+);
+
+static int start_clock_ble(void)
+{
+    static const struct bt_data ad[] = {
+        BT_DATA_BYTES(BT_DATA_FLAGS, (BT_LE_AD_GENERAL | BT_LE_AD_NO_BREDR)),
+        BT_DATA_BYTES(BT_DATA_UUID128_ALL,
+            BT_UUID_128_ENCODE(0x8d2f7b10, 0x6d3a, 0x4b19,
+                               0x9e2a, 0x73c4d5a6b701)),
+    };
+    static const struct bt_data sd[] = {
+        BT_DATA(BT_DATA_NAME_COMPLETE, CONFIG_BT_DEVICE_NAME,
+                sizeof(CONFIG_BT_DEVICE_NAME) - 1),
+    };
+    int err = bt_enable(NULL);
+
+    if (err) {
+        LOG_ERR("Bluetooth initialization failed: %d", err);
+        return err;
+    }
+
+    err = bt_le_adv_start(BT_LE_ADV_CONN_FAST_1, ad, ARRAY_SIZE(ad),
+                          sd, ARRAY_SIZE(sd));
+    if (err) {
+        LOG_ERR("Bluetooth advertising failed: %d", err);
+        return err;
+    }
+
+    LOG_INF("BLE time sync ready; connect to Mi Band 4 Clock");
+    return 0;
+}
+
+static int64_t current_local_epoch(int64_t fallback_epoch)
+{
+    int64_t epoch = fallback_epoch;
+
+    k_mutex_lock(&clock_mutex, K_FOREVER);
+    if (clock_is_synced) {
+        epoch = synced_local_epoch +
+                (k_uptime_get() / 1000 - sync_uptime_seconds);
+    }
+    k_mutex_unlock(&clock_mutex);
+
+    return epoch;
+}
 
 /* Compact 5x7 bitmap font for digits and punctuation. */
 static const uint8_t glyphs[12][7] = {
@@ -307,8 +418,8 @@ int main(void)
     const struct device *display = DEVICE_DT_GET(DISPLAY_NODE);
     int ret;
 
-    LOG_INF("Mi Band 4 Jalali clock prototype starting");
-    LOG_WRN("Clock starts at build timestamp; no RTC/phone time sync is implemented");
+    LOG_INF("Mi Band 4 Jalali clock starting");
+    k_mutex_init(&clock_mutex);
 
     if (!device_is_ready(display)) {
         LOG_ERR("Chosen display device is not ready");
@@ -327,12 +438,17 @@ int main(void)
         return 1;
     }
 
-    const int64_t base_epoch = build_epoch_seconds() + TIMEZONE_OFFSET_SECONDS;
+    const int64_t fallback_epoch = build_epoch_seconds() + TIMEZONE_OFFSET_SECONDS;
     const int64_t start_uptime = k_uptime_get() / 1000;
+
+    ret = start_clock_ble();
+    if (ret < 0) {
+        LOG_WRN("BLE sync unavailable; using build timestamp until restart");
+    }
 
     while (true) {
         int64_t elapsed = k_uptime_get() / 1000 - start_uptime;
-        ret = render_clock(display, base_epoch + elapsed);
+        ret = render_clock(display, current_local_epoch(fallback_epoch + elapsed));
         if (ret < 0) {
             return 1;
         }
