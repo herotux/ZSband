@@ -74,6 +74,8 @@ jobs:
           if-no-files-found: ignore
           path: |
             build/zephyr/zephyr.elf
+            build/zephyr/zephyr.map
+            build/zephyr/zephyr.stat
             build/zephyr/zephyr.bin
             build/zephyr/zephyr.hex
             build/zephyr/.config
