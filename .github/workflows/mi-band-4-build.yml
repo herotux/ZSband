@@ -1,4 +1,4 @@
-name: Mi Band 4 hello_world build
+name: Mi Band 4 display smoke-test build
 
 on:
   push:
@@ -7,6 +7,7 @@ on:
       - 'boards/**'
       - 'drivers/**'
       - 'dts/**'
+      - 'samples/**'
       - 'soc/**'
       - 'zephyr/**'
       - 'west.yml'
@@ -17,7 +18,7 @@ permissions:
 
 jobs:
   build:
-    name: Build Zephyr hello_world for mi_band_4
+    name: Build Mi Band 4 display smoke test
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
@@ -48,13 +49,15 @@ jobs:
           west list
           test -f ../zephyr/samples/hello_world/CMakeLists.txt
           test -f boards/xiaomi/mi_band_4/mi_band_4.dts
+          test -f drivers/display/display_rm69xxx.c
+          test -f samples/mi_band_4_display_test/src/main.c
           test -f zephyr/module.yml
 
-      - name: Build hello_world for Mi Band 4
+      - name: Build display smoke test for Mi Band 4
         shell: bash
         run: |
           set -euxo pipefail
-          west build -p always -b mi_band_4 zephyr/samples/hello_world -- \
+          west build -p always -b mi_band_4 app/samples/mi_band_4_display_test -- \
             -DBOARD_ROOT="$GITHUB_WORKSPACE/app" \
             -DEXTRA_ZEPHYR_MODULES="$GITHUB_WORKSPACE/app"
 
@@ -62,7 +65,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: mi-band-4-hello-world-build
+          name: mi-band-4-display-smoke-test
           if-no-files-found: ignore
           path: |
             build/zephyr/zephyr.elf
