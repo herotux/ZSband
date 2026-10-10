@@ -1,0 +1,74 @@
+name: Mi Band 4 hello_world build
+
+on:
+  push:
+    paths:
+      - '.github/workflows/mi-band-4-build.yml'
+      - 'boards/**'
+      - 'drivers/**'
+      - 'dts/**'
+      - 'soc/**'
+      - 'zephyr/**'
+      - 'west.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build Zephyr hello_world for mi_band_4
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Checkout ZSBand manifest repository
+        uses: actions/checkout@v4
+        with:
+          path: app
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Set up Zephyr workspace and SDK
+        uses: zephyrproject-rtos/action-zephyr-setup@v1
+        with:
+          app-path: app
+          toolchains: arm-zephyr-eabi
+          enable-ccache: false
+
+      - name: Verify workspace and board files
+        working-directory: app
+        shell: bash
+        run: |
+          set -euxo pipefail
+          west --version
+          west list
+          test -f ../zephyr/samples/hello_world/CMakeLists.txt
+          test -f boards/xiaomi/mi_band_4/mi_band_4.dts
+          test -f zephyr/module.yml
+
+      - name: Build hello_world for Mi Band 4
+        shell: bash
+        run: |
+          set -euxo pipefail
+          west build -p always -b mi_band_4 zephyr/samples/hello_world -- \
+            -DBOARD_ROOT="$GITHUB_WORKSPACE/app" \
+            -DEXTRA_ZEPHYR_MODULES="$GITHUB_WORKSPACE/app"
+
+      - name: Upload build outputs and logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mi-band-4-hello-world-build
+          if-no-files-found: ignore
+          path: |
+            build/zephyr/zephyr.elf
+            build/zephyr/zephyr.bin
+            build/zephyr/zephyr.hex
+            build/zephyr/.config
+            build/CMakeCache.txt
+            build/zephyr/zephyr.dts
+            build/build.ninja
