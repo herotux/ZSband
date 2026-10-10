@@ -19,7 +19,13 @@ LOG_MODULE_REGISTER(mi_band_4_display_test, LOG_LEVEL_INF);
 #define DISPLAY_HEIGHT 240U
 #define BAND_HEIGHT 40U
 
-static uint16_t line[DISPLAY_WIDTH];
+/*
+ * Keep the complete frame in RAM and submit it in one display_write().
+ * The SmartBond MIPI-DBI host may still be transferring a previous write
+ * when the next one arrives; issuing 240 one-row transfers back-to-back can
+ * therefore fail with -EBUSY and leave only part of the test pattern drawn.
+ */
+static uint16_t framebuffer[DISPLAY_WIDTH * DISPLAY_HEIGHT];
 
 static uint16_t color_for_row(uint16_t y)
 {
@@ -48,9 +54,9 @@ int main(void)
 	struct display_capabilities caps = {0};
 	struct display_buffer_descriptor desc = {
 		.width = DISPLAY_WIDTH,
-		.height = 1,
+		.height = DISPLAY_HEIGHT,
 		.pitch = DISPLAY_WIDTH,
-		.buf_size = sizeof(line),
+		.buf_size = sizeof(framebuffer),
 	};
 	int ret;
 
@@ -83,32 +89,31 @@ int main(void)
 		return 1;
 	}
 
+	/* Construct six horizontal RGB565 bands in the full-frame buffer. */
+	for (uint16_t y = 0; y < DISPLAY_HEIGHT; y++) {
+		const uint16_t color = color_for_row(y);
+
+		for (size_t x = 0; x < DISPLAY_WIDTH; x++) {
+			framebuffer[(size_t)y * DISPLAY_WIDTH + x] = color;
+		}
+	}
+
 	ret = display_blanking_off(display);
 	if (ret < 0) {
 		LOG_ERR("Could not unblank display: %d", ret);
 		return 1;
 	}
 
-	for (uint16_t y = 0; y < DISPLAY_HEIGHT; y++) {
-		const uint16_t color = color_for_row(y);
-
-		for (size_t x = 0; x < ARRAY_SIZE(line); x++) {
-			line[x] = color;
-		}
-
-		ret = display_write(display, 0, y, &desc, line);
-		if (ret < 0) {
-			LOG_ERR("Display write failed at row %u: %d", y, ret);
-			return 1;
-		}
-
-		if (((y + 1U) % BAND_HEIGHT) == 0U) {
-			LOG_INF("Submitted rows %u-%u (RGB565 0x%04x)",
-				y + 1U - BAND_HEIGHT, y, color);
-		}
+	/* Submit one full frame to avoid overlapping asynchronous DBI transfers. */
+	ret = display_write(display, 0, 0, &desc, framebuffer);
+	if (ret < 0) {
+		LOG_ERR("Full-frame RGB565 write failed: %d", ret);
+		return 1;
 	}
 
-	LOG_INF("All six color bands were submitted without a Display API error");
+	LOG_INF("Full-frame RGB565 write submitted: %u x %u, %u bytes",
+		DISPLAY_WIDTH, DISPLAY_HEIGHT, (unsigned int)sizeof(framebuffer));
+	LOG_INF("Pattern order from top: red, green, blue, yellow, white, black");
 	LOG_INF("Visual correctness still requires observation on the physical band");
 	return 0;
 }
