@@ -73,7 +73,26 @@ static int rm69xxx_write(const struct device *dev, const uint16_t x, const uint1
 	uint8_t cmd[4] = {0};
 	int ret;
 
-	__ASSERT(desc->width <= desc->pitch, "pitch must be >= width");
+	/* Reject malformed or out-of-bounds writes before programming the panel. */
+	if (desc == NULL || buf == NULL || desc->width == 0U || desc->height == 0U) {
+		return -EINVAL;
+	}
+
+	if (desc->width > desc->pitch || x > cfg->width || y > cfg->height ||
+	    desc->width > cfg->width - x || desc->height > cfg->height - y) {
+		LOG_ERR("Invalid display write: x=%u y=%u width=%u height=%u pitch=%u",
+			x, y, desc->width, desc->height, desc->pitch);
+		return -EINVAL;
+	}
+
+	/* The panel coordinates plus offsets must fit in its 16-bit address range. */
+	if ((int32_t)x + cfg->x_offset < 0 ||
+	    (int32_t)x + cfg->x_offset + desc->width - 1U > UINT16_MAX ||
+	    (int32_t)y + cfg->y_offset < 0 ||
+	    (int32_t)y + cfg->y_offset + desc->height - 1U > UINT16_MAX) {
+		LOG_ERR("Display write exceeds controller address range");
+		return -EINVAL;
+	}
 
 	sys_put_be16((uint16_t)(x + cfg->x_offset), &cmd[0]);
 	sys_put_be16((uint16_t)(x + cfg->x_offset + desc->width - 1U), &cmd[2]);
