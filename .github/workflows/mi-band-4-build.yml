@@ -53,6 +53,10 @@ jobs:
           test -f samples/mi_band_4_display_test/src/main.c
           test -f zephyr/module.yml
 
+      - name: Fetch Renesas Bluetooth controller blobs
+        working-directory: app
+        run: west blobs fetch hal_renesas
+
       - name: Build Jalali clock for Mi Band 4
         shell: bash
         run: |
