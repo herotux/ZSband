@@ -20,3 +20,6 @@ CONFIG_SERIAL=y
 # Disable Hex build
 CONFIG_BUILD_OUTPUT_HEX=n
 
+# Link application into the DTS-defined image-0 slot, not the product-header area.
+CONFIG_USE_DT_CODE_PARTITION=y
+
