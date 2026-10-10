@@ -1,4 +1,4 @@
-name: Mi Band 4 display smoke-test build
+name: Mi Band 4 Jalali clock build
 
 on:
   push:
@@ -18,7 +18,7 @@ permissions:
 
 jobs:
   build:
-    name: Build Mi Band 4 display smoke test
+    name: Build Mi Band 4 Jalali clock
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
@@ -53,7 +53,7 @@ jobs:
           test -f samples/mi_band_4_display_test/src/main.c
           test -f zephyr/module.yml
 
-      - name: Build display smoke test for Mi Band 4
+      - name: Build Jalali clock for Mi Band 4
         shell: bash
         run: |
           set -euxo pipefail
@@ -70,7 +70,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: mi-band-4-display-smoke-test
+          name: mi-band-4-jalali-clock
           if-no-files-found: ignore
           path: |
             build/zephyr/zephyr.elf
